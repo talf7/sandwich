@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>הזמנת כריכים – דינמומטר</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #fbf6ee;
+      --card: #ffffff;
+      --text: #2a2118;
+      --muted: #6b5d4e;
+      --line: #d9ccb8;
+      --accent: #b4540f;
+      --accent-strong: #8f3f06;
+      --accent-soft: #fdebd8;
+      --error: #b3261e;
+      --error-soft: #fdeceb;
+      --ok: #1f7a3d;
+      --focus: #1a56db;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1b1714;
+        --card: #26201b;
+        --text: #f4ece2;
+        --muted: #c2b4a3;
+        --line: #4a3f35;
+        --accent: #f0a35b;
+        --accent-strong: #ffc285;
+        --accent-soft: #3a2a1b;
+        --error: #ff8a80;
+        --error-soft: #3b1f1d;
+        --ok: #6fd08f;
+        --focus: #8ab4ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { font-size: 112.5%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Rubik, "Segoe UI", Arial, sans-serif;
+      line-height: 1.55;
+    }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
+
+    header { text-align: center; margin-bottom: 18px; }
+    header .logo { font-size: 2.6rem; line-height: 1; }
+    header h1 { font-size: 1.6rem; margin: 8px 0 4px; }
+    header p { margin: 0; color: var(--muted); }
+    .deadline {
+      display: inline-block; margin-top: 10px; padding: 4px 12px;
+      border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 500;
+    }
+
+    .progress { margin: 0 0 14px; }
+    .progress-text { font-size: .9rem; color: var(--muted); margin-bottom: 6px; }
+    .bar { height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .25s; }
+
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+      padding: 22px 18px; box-shadow: 0 2px 10px rgb(0 0 0 / .05);
+    }
+    fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+    legend { padding: 0; width: 100%; }
+    h2 { font-size: 1.35rem; margin: 0 0 4px; }
+    h2:focus { outline: none; }
+    .hint { color: var(--muted); margin: 0 0 16px; }
+
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-weight: 500; margin-bottom: 6px; }
+    input[type=text] {
+      width: 100%; font: inherit; font-size: 1.1rem; padding: 14px;
+      border: 2px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
+    }
+    input[type=text][aria-invalid=true] { border-color: var(--error); }
+
+    .options { display: grid; gap: 10px; }
+    .options.two { grid-template-columns: 1fr 1fr; }
+    .opt {
+      display: flex; align-items: center; gap: 12px; min-height: 60px;
+      padding: 12px 14px; border: 2px solid var(--line); border-radius: 14px;
+      cursor: pointer; font-size: 1.1rem; background: var(--card);
+    }
+    .opt:hover { border-color: var(--accent); }
+    .opt input { width: 1.5em; height: 1.5em; margin: 0; flex: none; accent-color: var(--accent); cursor: pointer; }
+    .opt.checked { border-color: var(--accent); background: var(--accent-soft); font-weight: 500; }
+    .opt.big { flex-direction: column; justify-content: center; text-align: center; min-height: 130px; gap: 6px; }
+    .opt.big .emoji { font-size: 2.4rem; line-height: 1; }
+    .opt.big small { color: var(--muted); font-size: .85rem; font-weight: 400; }
+
+    .error {
+      margin: 14px 0 0; padding: 10px 12px; border-radius: 10px;
+      background: var(--error-soft); color: var(--error); font-weight: 500;
+    }
+    .error:empty { display: none; }
+
+    .actions { display: flex; gap: 10px; margin-top: 22px; }
+    button {
+      font: inherit; font-size: 1.1rem; font-weight: 700; border-radius: 14px;
+      padding: 14px 18px; min-height: 56px; cursor: pointer; border: 2px solid transparent;
+    }
+    .primary { flex: 1; background: var(--accent); color: #fff; }
+    .primary:hover { background: var(--accent-strong); }
+    @media (prefers-color-scheme: dark) { .primary { color: #1b1714; } }
+    .secondary { background: transparent; color: var(--text); border-color: var(--line); }
+    button:disabled { opacity: .6; cursor: wait; }
+
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    .opt:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
+    .opt input:focus-visible { outline: none; }
+
+    .summary { margin: 0; display: grid; gap: 0; }
+    .summary div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .summary div:last-child { border-bottom: 0; }
+    .summary dt { color: var(--muted); }
+    .summary dd { margin: 0; font-weight: 500; text-align: left; }
+
+    .center { text-align: center; }
+    .big-emoji { font-size: 3.2rem; line-height: 1; margin-bottom: 8px; }
+    .done h2 { color: var(--ok); }
+
+    @media (max-width: 380px) { .options.two { grid-template-columns: 1fr; } }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo" aria-hidden="true">🥪</div>
+      <h1>הזמנת כריכים – דינמומטר</h1>
+      <p id="forDay"></p>
+      <span class="deadline" id="deadlineNote"></span>
+    </header>
+
+    <div class="progress" id="progress" hidden>
+      <div class="progress-text" id="progressText" aria-live="polite"></div>
+      <div class="bar" aria-hidden="true"><span id="progressBar"></span></div>
+    </div>
+
+    <main class="card" id="card">
+      <!-- שלב 1: שם -->
+      <form class="step" data-step="name" novalidate hidden>
+        <h2 tabindex="-1">מה השם שלך?</h2>
+        <p class="hint">השם יופיע על הכריך. אפשר להזמין פעם אחת בלבד.</p>
+        <div class="field">
+          <label for="firstName">שם פרטי</label>
+          <input type="text" id="firstName" autocomplete="given-name" required aria-describedby="err-name">
+        </div>
+        <div class="field">
+          <label for="lastName">שם משפחה</label>
+          <input type="text" id="lastName" autocomplete="family-name" required aria-describedby="err-name">
+        </div>
+        <p class="error" id="err-name" role="alert"></p>
+        <div class="actions"><button type="submit" class="primary">המשך</button></div>
+      </form>
+
+      <!-- שלב 2: כריך או שתייה -->
+      <form class="step" data-step="type" novalidate hidden>
+        <fieldset>
+          <legend><h2 tabindex="-1">כריך או שתייה?</h2></legend>
+          <p class="hint">אפשר לקחת שתייה במקום כריך.</p>
+          <div class="options two">
+            <label class="opt big"><input type="radio" name="type" value="sandwich">
+              <span class="emoji" aria-hidden="true">🥖</span><span>כריך</span></label>
+            <label class="opt big"><input type="radio" name="type" value="drink">
+              <span class="emoji" aria-hidden="true">🥤</span><span>שתייה</span><small>במקום כריך</small></label>
+          </div>
+        </fieldset>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="button" class="secondary" data-back>חזרה</button><button type="submit" class="primary">המשך</button></div>
+      </form>
+
+      <!-- שתייה -->
+      <form class="step" data-step="drink" novalidate hidden>
+        <fieldset>
+          <legend><h2 tabindex="-1">איזו שתייה?</h2></legend>
+          <p class="hint">בחירה אחת.</p>
+          <div class="options" data-options="drink"></div>
+        </fieldset>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="button" class="secondary" data-back>חזרה</button><button type="submit" class="primary">המשך</button></div>
+      </form>
+
+      <!-- לחם -->
+      <form class="step" data-step="bread" novalidate hidden>
+        <fieldset>
+          <legend><h2 tabindex="-1">איזה לחם?</h2></legend>
+          <p class="hint">בחירה אחת.</p>
+          <div class="options" data-options="bread"></div>
+        </fieldset>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="button" class="secondary" data-back>חזרה</button><button type="submit" class="primary">המשך</button></div>
+      </form>
+
+      <!-- ממרח -->
+      <form class="step" data-step="spread" novalidate hidden>
+        <fieldset>
+          <legend><h2 tabindex="-1">איזה ממרח?</h2></legend>
+          <p class="hint">בחירה אחת. לטונה ולחביתה אפשר להוסיף ממרח נוסף בשלב הבא.</p>
+          <div class="options" data-options="spread"></div>
+        </fieldset>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="button" class="secondary" data-back>חזרה</button><button type="submit" class="primary">המשך</button></div>
+      </form>
+
+      <!-- ממרח נוסף (רק לטונה/חביתה) -->
+      <form class="step" data-step="extra" novalidate hidden>
+        <fieldset>
+          <legend><h2 tabindex="-1">רוצה ממרח נוסף?</h2></legend>
+          <p class="hint">בחירה אחת, או בלי.</p>
+          <div class="options" data-options="extra"></div>
+        </fieldset>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="button" class="secondary" data-back>חזרה</button><button type="submit" class="primary">המשך</button></div>
+      </form>
+
+      <!-- ירקות -->
+      <form class="step" data-step="veggies" novalidate hidden>
+        <fieldset>
+          <legend><h2 tabindex="-1">אילו ירקות?</h2></legend>
+          <p class="hint">אפשר לסמן כמה שרוצים, או לא לסמן כלום.</p>
+          <div class="options" data-options="veggies"></div>
+        </fieldset>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="button" class="secondary" data-back>חזרה</button><button type="submit" class="primary">המשך</button></div>
+      </form>
+
+      <!-- סיכום -->
+      <form class="step" data-step="review" novalidate hidden>
+        <h2 tabindex="-1">זה מה שהזמנת</h2>
+        <p class="hint">כדאי לבדוק לפני השליחה: אחרי השליחה אי אפשר לשנות.</p>
+        <dl class="summary" id="summary"></dl>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="button" class="secondary" data-back>חזרה</button><button type="submit" class="primary" id="submitBtn">שליחת ההזמנה</button></div>
+      </form>
+
+      <!-- הצלחה -->
+      <section class="step done center" data-step="done" hidden>
+        <div class="big-emoji" aria-hidden="true">✅</div>
+        <h2 tabindex="-1" id="doneTitle">ההזמנה נשלחה!</h2>
+        <p class="hint">תודה! ההזמנה נשמרה, אין צורך לעשות שום דבר נוסף.</p>
+        <dl class="summary" id="doneSummary"></dl>
+      </section>
+
+      <!-- טעינה / תקלה -->
+      <section class="step center" data-step="loading">
+        <h2 tabindex="-1" id="loadingTitle">טוען את התפריט…</h2>
+        <p class="hint" id="loadingText"></p>
+        <div class="actions" id="retryBox" hidden><button type="button" class="primary" onclick="location.reload()">לנסות שוב</button></div>
+      </section>
+
+      <!-- סגור -->
+      <section class="step center" data-step="closed" hidden>
+        <div class="big-emoji" aria-hidden="true">⏰</div>
+        <h2 tabindex="-1">ההזמנה לשבוע הזה נסגרה</h2>
+        <p class="hint" id="closedText"></p>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // כתובת ה-Web App של Apps Script (מסתיימת ב-/exec)
+    const API_URL = 'https://script.google.com/macros/s/AKfycbz_HUAOtxz4yO3B42l_GBMzmdwbPEkYiyymQkP87_SL0U8UttUSDS6QM-4LX_MaDbM7/exec';
+
+    let BOOT, M;
+    const state = { firstName: '', lastName: '', type: '', drink: '', bread: '', spread: '', extra: '', veggies: [] };
+    let current = 'name';
+
+    const $ = s => document.querySelector(s);
+    const stepEl = id => document.querySelector('[data-step="' + id + '"]');
+
+    // text/plain כדי שהדפדפן לא יחסום את הבקשה ל-Google (CORS)
+    async function server(action, data) {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action }, data))
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }
+
+    function path() {
+      const p = ['name', 'type'];
+      if (state.type === 'drink') p.push('drink');
+      else {
+        p.push('bread', 'spread');
+        if (M.extraSpreadFor.includes(state.spread)) p.push('extra');
+        p.push('veggies');
+      }
+      p.push('review');
+      return p;
+    }
+
+    function show(id) {
+      current = id;
+      document.querySelectorAll('.step').forEach(el => { el.hidden = el.dataset.step !== id; });
+      const p = path();
+      const i = p.indexOf(id);
+      $('#progress').hidden = i < 0;
+      if (i >= 0) {
+        $('#progressText').textContent = 'שלב ' + (i + 1) + ' מתוך ' + p.length;
+        $('#progressBar').style.width = ((i + 1) / p.length * 100) + '%';
+      }
+      if (id === 'review') renderSummary($('#summary'));
+      setError(id, '');
+      const h = stepEl(id).querySelector('h2');
+      h.focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function setError(id, msg) {
+      const el = stepEl(id).querySelector('.error');
+      if (el) el.textContent = msg;
+    }
+
+    function buildOptions(key, items, multiple) {
+      const box = document.querySelector('[data-options="' + key + '"]');
+      box.innerHTML = '';
+      items.forEach(item => {
+        const label = document.createElement('label');
+        label.className = 'opt';
+        const input = document.createElement('input');
+        input.type = multiple ? 'checkbox' : 'radio';
+        input.name = key;
+        input.value = item.value;
+        const span = document.createElement('span');
+        span.textContent = item.label;
+        label.append(input, span);
+        box.append(label);
+      });
+    }
+
+    function syncChecked(form) {
+      form.querySelectorAll('.opt').forEach(l => l.classList.toggle('checked', l.querySelector('input').checked));
+    }
+
+    function readStep(id) {
+      const form = stepEl(id);
+      if (id === 'veggies') {
+        state.veggies = [...form.querySelectorAll('input:checked')].map(i => i.value);
+        return '';
+      }
+      const picked = form.querySelector('input[type=radio]:checked');
+      const messages = {
+        type: 'יש לבחור כריך או שתייה', drink: 'יש לבחור שתייה', bread: 'יש לבחור לחם',
+        spread: 'יש לבחור ממרח', extra: 'יש לבחור ממרח נוסף או "בלי ממרח נוסף"'
+      };
+      if (!picked) return messages[id];
+      const value = picked.value;
+      if (id === 'type' && value !== state.type) {
+        Object.assign(state, { drink: '', bread: '', spread: '', extra: '', veggies: [] });
+        document.querySelectorAll('[data-options] input').forEach(i => { i.checked = false; });
+        document.querySelectorAll('.opt.checked').forEach(l => l.classList.remove('checked'));
+      }
+      if (id === 'spread' && !M.extraSpreadFor.includes(value)) {
+        state.extra = '';
+        stepEl('extra').querySelectorAll('input').forEach(i => { i.checked = false; });
+        syncChecked(stepEl('extra'));
+      }
+      state[id] = id === 'extra' && value === '__none' ? '' : value;
+      return '';
+    }
+
+    function next() {
+      const p = path();
+      show(p[p.indexOf(current) + 1]);
+    }
+
+    function back() {
+      const p = path();
+      show(p[Math.max(0, p.indexOf(current) - 1)]);
+    }
+
+    function lines() {
+      const rows = [['שם', state.firstName + ' ' + state.lastName]];
+      if (state.type === 'drink') rows.push(['שתייה', state.drink]);
+      else {
+        rows.push(['לחם', state.bread], ['ממרח', state.spread]);
+        if (M.extraSpreadFor.includes(state.spread)) rows.push(['ממרח נוסף', state.extra || 'בלי']);
+        rows.push(['ירקות', state.veggies.length ? state.veggies.join(', ') : 'בלי ירקות']);
+      }
+      return rows;
+    }
+
+    function renderSummary(dl) {
+      dl.innerHTML = '';
+      lines().forEach(([k, v]) => {
+        const row = document.createElement('div');
+        const dt = document.createElement('dt'); dt.textContent = k;
+        const dd = document.createElement('dd'); dd.textContent = v;
+        row.append(dt, dd);
+        dl.append(row);
+      });
+    }
+
+    function closed() {
+      $('#closedText').textContent = 'ההזמנות נסגרות ביום רביעי בשעה ' + BOOT.deadline + '. נתראה בשבוע הבא!';
+      show('closed');
+    }
+
+    function serverError(id, btn, label) {
+      setError(id, 'משהו השתבש בחיבור. כדאי לנסות שוב בעוד רגע.');
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+
+    async function submitName(form) {
+      const first = $('#firstName'), last = $('#lastName');
+      state.firstName = first.value.replace(/\s+/g, ' ').trim();
+      state.lastName = last.value.replace(/\s+/g, ' ').trim();
+      const badFirst = state.firstName.length < 2, badLast = state.lastName.length < 2;
+      first.setAttribute('aria-invalid', badFirst);
+      last.setAttribute('aria-invalid', badLast);
+      if (badFirst || badLast) {
+        setError('name', badFirst && badLast ? 'יש למלא שם פרטי ושם משפחה' : badFirst ? 'יש למלא שם פרטי' : 'יש למלא שם משפחה');
+        (badFirst ? first : last).focus();
+        return;
+      }
+      const btn = form.querySelector('.primary');
+      btn.disabled = true; btn.textContent = 'בודק…';
+      try {
+        const res = await server('checkName', { firstName: state.firstName, lastName: state.lastName });
+        btn.disabled = false; btn.textContent = 'המשך';
+        if (res.code === 'CLOSED') return closed();
+        if (res.code === 'DUPLICATE') {
+          setError('name', 'כבר התקבלה הזמנה בשם ' + state.firstName + ' ' + state.lastName + ' השבוע. אפשר להזמין פעם אחת בלבד.');
+          return;
+        }
+        next();
+      } catch (e) {
+        serverError('name', btn, 'המשך');
+      }
+    }
+
+    async function submitOrder(form) {
+      const btn = $('#submitBtn');
+      btn.disabled = true; btn.textContent = 'שולח…';
+      try {
+        const res = await server('submitOrder', { order: state });
+        if (res.ok) {
+          $('#doneTitle').textContent = 'תודה ' + state.firstName + ', ההזמנה נשלחה!';
+          renderSummary($('#doneSummary'));
+          return show('done');
+        }
+        btn.disabled = false; btn.textContent = 'שליחת ההזמנה';
+        if (res.code === 'CLOSED') return closed();
+        setError('review', res.code === 'DUPLICATE'
+          ? 'כבר התקבלה הזמנה בשם הזה השבוע. אפשר להזמין פעם אחת בלבד.'
+          : (res.message || 'ההזמנה לא תקינה, כדאי לבדוק את הבחירות.'));
+      } catch (e) {
+        serverError('review', btn, 'שליחת ההזמנה');
+      }
+    }
+
+    // ===== אתחול =====
+    function init() {
+      $('#forDay').textContent = 'לשישי ' + BOOT.fridayLabel;
+      $('#deadlineNote').textContent = '⏰ יש להזמין עד רביעי ב-' + BOOT.deadline;
+
+      const asItems = arr => arr.map(v => ({ value: v, label: v }));
+      buildOptions('drink', asItems(M.drinks));
+      buildOptions('bread', asItems(M.breads));
+      buildOptions('spread', asItems(M.spreads));
+      buildOptions('extra', asItems(M.extraSpreads).concat([{ value: '__none', label: 'בלי ממרח נוסף' }]));
+      buildOptions('veggies', asItems(M.veggies), true);
+
+      document.querySelectorAll('form.step').forEach(form => {
+        form.addEventListener('change', () => { syncChecked(form); setError(form.dataset.step, ''); });
+        form.addEventListener('submit', e => {
+          e.preventDefault();
+          const id = form.dataset.step;
+          if (id === 'name') return submitName(form);
+          if (id === 'review') return submitOrder(form);
+          const err = readStep(id);
+          if (err) {
+            setError(id, err);
+            const first = form.querySelector('input');
+            if (first) first.focus();
+            return;
+          }
+          next();
+        });
+        const b = form.querySelector('[data-back]');
+        if (b) b.addEventListener('click', back);
+      });
+
+      if (BOOT.closed) closed(); else show('name');
+    }
+
+    fetch(API_URL)
+      .then(r => r.json())
+      .then(data => { BOOT = data; M = data.menu; init(); })
+      .catch(() => {
+        $('#loadingTitle').textContent = 'לא הצלחנו לטעון את התפריט';
+        $('#loadingText').textContent = 'כדאי לבדוק את החיבור לאינטרנט ולנסות שוב.';
+        $('#retryBox').hidden = false;
+      });
+  </script>
+</body>
+</html>
