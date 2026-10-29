@@ -38,6 +38,7 @@
       }
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     html { font-size: 112.5%; }
     body {
       margin: 0;
@@ -122,6 +123,16 @@
     .summary dd { margin: 0; font-weight: 500; text-align: left; }
 
     .center { text-align: center; }
+    .stats { display: flex; gap: 10px; margin: 0 0 16px; }
+    .stats div { flex: 1; text-align: center; padding: 10px; border-radius: 12px; background: var(--accent-soft); }
+    .stats b { display: block; font-size: 1.5rem; color: var(--accent-strong); }
+    .orders-list { list-style: none; margin: 0; padding: 0; }
+    .orders-list li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .orders-list li:last-child { border-bottom: 0; }
+    .orders-list .who { font-weight: 700; display: block; }
+    .orders-list .what { color: var(--muted); }
+    .orders-group { font-size: 1.1rem; margin: 18px 0 4px; }
+    .search { margin-bottom: 4px; }
     .big-emoji { font-size: 3.2rem; line-height: 1; margin-bottom: 8px; }
     .done h2 { color: var(--ok); }
 
@@ -257,9 +268,19 @@
 
       <!-- סגור -->
       <section class="step center" data-step="closed" hidden>
+        <p class="error" role="alert"></p>
         <div class="big-emoji" aria-hidden="true">⏰</div>
         <h2 tabindex="-1">ההזמנה לשבוע הזה נסגרה</h2>
         <p class="hint" id="closedText"></p>
+        <div class="actions"><button type="button" class="primary" id="viewOrdersBtn">צפייה בהזמנות השבוע</button></div>
+      </section>
+
+      <!-- רשימת ההזמנות -->
+      <section class="step" data-step="orders" hidden>
+        <h2 tabindex="-1" id="ordersTitle">ההזמנות לשישי</h2>
+        <div id="ordersBody"></div>
+        <p class="error" role="alert"></p>
+        <div class="actions"><button type="button" class="secondary" id="ordersBackBtn">חזרה</button></div>
       </section>
     </main>
   </div>
@@ -402,7 +423,100 @@
 
     function closed() {
       $('#closedText').textContent = 'ההזמנות נסגרות ביום רביעי בשעה ' + BOOT.deadline + '. נתראה בשבוע הבא!';
+      $('#deadlineNote').hidden = true;
       show('closed');
+    }
+
+    function el(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function describe(o) {
+      if (o.type === 'שתייה') return o.drink;
+      let s = o.bread + ' · ' + o.spread;
+      if (o.extra && o.extra !== 'בלי' && o.extra !== '—') s += ' + ' + o.extra;
+      return s + ' · ' + o.veggies;
+    }
+
+    function renderOrders(data) {
+      const body = $('#ordersBody');
+      body.innerHTML = '';
+      $('#ordersTitle').textContent = 'ההזמנות לשישי ' + data.fridayLabel;
+      const orders = data.orders.slice().sort((a, b) => a.name.localeCompare(b.name, 'he'));
+      const sandwiches = orders.filter(o => o.type === 'כריך');
+      const drinks = orders.filter(o => o.type === 'שתייה');
+      if (!orders.length) {
+        body.append(el('p', 'hint', 'עדיין לא התקבלו הזמנות השבוע.'));
+        return;
+      }
+
+      const stats = el('div', 'stats');
+      [['כריכים', sandwiches.length], ['שתייה', drinks.length], ['סה"כ', orders.length]].forEach(([k, v]) => {
+        const d = el('div');
+        d.append(el('b', '', v), el('span', '', k));
+        stats.append(d);
+      });
+      body.append(stats);
+
+      const field = el('div', 'field search');
+      const label = el('label', '', 'חיפוש לפי שם');
+      label.htmlFor = 'ordersSearch';
+      const input = el('input');
+      input.type = 'text';
+      input.id = 'ordersSearch';
+      field.append(label, input);
+      body.append(field);
+      const count = el('p', 'hint');
+      count.setAttribute('aria-live', 'polite');
+      body.append(count);
+
+      const lists = [];
+      [['כריכים', sandwiches], ['שתייה במקום כריך', drinks]].forEach(([title, list]) => {
+        if (!list.length) return;
+        const h = el('h3', 'orders-group', title + ' (' + list.length + ')');
+        const ul = el('ul', 'orders-list');
+        list.forEach(o => {
+          const li = el('li');
+          li.dataset.name = o.name.toLowerCase();
+          li.append(el('span', 'who', o.name), el('span', 'what', describe(o)));
+          ul.append(li);
+        });
+        body.append(h, ul);
+        lists.push([h, ul, title]);
+      });
+
+      input.addEventListener('input', () => {
+        const q = input.value.trim().toLowerCase();
+        let shown = 0;
+        lists.forEach(([h, ul, title]) => {
+          let n = 0;
+          ul.querySelectorAll('li').forEach(li => {
+            const hit = !q || li.dataset.name.includes(q);
+            li.hidden = !hit;
+            if (hit) n++;
+          });
+          h.hidden = !n;
+          shown += n;
+        });
+        count.textContent = q ? (shown ? 'נמצאו ' + shown + ' הזמנות' : 'לא נמצאה הזמנה בשם הזה') : '';
+      });
+    }
+
+    async function viewOrders() {
+      const btn = $('#viewOrdersBtn');
+      btn.disabled = true; btn.textContent = 'טוען…';
+      try {
+        const res = await fetch(API_URL + '?action=orders');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        renderOrders(await res.json());
+        show('orders');
+      } catch (e) {
+        setError('closed', 'לא הצלחנו לטעון את ההזמנות. כדאי לנסות שוב בעוד רגע.');
+      }
+      btn.disabled = false; btn.textContent = 'צפייה בהזמנות השבוע';
     }
 
     function serverError(id, btn, label) {
@@ -493,6 +607,9 @@
 
       if (BOOT.closed) closed(); else show('name');
     }
+
+    $('#viewOrdersBtn').addEventListener('click', viewOrders);
+    $('#ordersBackBtn').addEventListener('click', () => show('closed'));
 
     fetch(API_URL)
       .then(r => r.json())
