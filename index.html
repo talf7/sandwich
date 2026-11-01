@@ -308,7 +308,7 @@
       <!-- סגור -->
       <section class="step center" data-step="closed" hidden>
         <div class="big-emoji" aria-hidden="true">⏰</div>
-        <h2 tabindex="-1">ההזמנה לשבוע הזה נסגרה</h2>
+        <h2 tabindex="-1" id="closedTitle">ההזמנה לשבוע הזה נסגרה</h2>
         <p class="hint" id="closedText"></p>
         <div class="actions"><button type="button" class="primary" data-view-orders>צפייה בהזמנות השבוע</button></div>
       </section>
@@ -672,7 +672,13 @@
     }
 
     function closed() {
-      $('#closedText').textContent = 'ההזמנות נסגרות ביום רביעי בשעה ' + BOOT.deadline + '. נתראה בשבוע הבא!';
+      if (BOOT.notYet) {
+        $('#closedTitle').textContent = 'ההזמנה עדיין לא נפתחה';
+        $('#closedText').textContent = 'ההזמנה לשישי ' + BOOT.fridayLabel + ' פתוחה ביום רביעי, מ-' + BOOT.openTime + ' עד ' + BOOT.deadline + '. הקישור יישלח בקבוצה.';
+      } else {
+        $('#closedTitle').textContent = 'ההזמנה לשבוע הזה נסגרה';
+        $('#closedText').textContent = 'ההזמנות נסגרות ביום רביעי בשעה ' + BOOT.deadline + '. נתראה בשבוע הבא!';
+      }
       $('#deadlineNote').hidden = true;
       show('closed');
     }
