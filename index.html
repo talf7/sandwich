@@ -162,6 +162,16 @@
     .opt.repeat { align-items: flex-start; }
     .opt.repeat input { margin-top: .2em; }
 
+    .test-banner { margin: 12px 0 0; padding: 8px 12px; border-radius: 10px; background: #fff3c4; color: #5c4400; font-weight: 500; }
+    .admin-box { padding: 14px; border: 2px solid var(--line); border-radius: 14px; margin-bottom: 8px; }
+    .admin-box .hint { margin: 8px 0 0; }
+    .admin-box button { margin-top: 10px; min-height: 48px; }
+    .switch { display: flex; align-items: center; gap: 12px; font-size: 1.15rem; font-weight: 700; cursor: pointer; }
+    .switch input { appearance: none; width: 54px; height: 30px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; flex: none; margin: 0; transition: background .2s; }
+    .switch input::after { content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); transition: inset-inline-start .2s; }
+    .switch input:checked { background: var(--accent); }
+    .switch input:checked::after { inset-inline-start: 27px; }
+    .switch input:disabled { opacity: .6; cursor: wait; }
     .footer-link { text-align: center; margin-top: 18px; }
     .linklike { background: none; border: 0; color: var(--muted); text-decoration: underline; font-weight: 400; font-size: .95rem; min-height: 44px; padding: 8px; }
   </style>
@@ -173,6 +183,7 @@
       <h1>הזמנת כריכים – דינמומטר</h1>
       <p id="forDay"></p>
       <span class="deadline" id="deadlineNote" hidden></span>
+      <p class="test-banner" id="testBanner" role="status" hidden>🧪 מצב בדיקה: הטופס פתוח, וההזמנות נשמרות בלשונית "בדיקה"</p>
     </header>
 
     <div class="progress" id="progress" hidden>
@@ -310,30 +321,40 @@
         <div class="big-emoji" aria-hidden="true">⏰</div>
         <h2 tabindex="-1" id="closedTitle">ההזמנה לשבוע הזה נסגרה</h2>
         <p class="hint" id="closedText"></p>
-        <div class="actions"><button type="button" class="primary" data-view-orders>צפייה בהזמנות השבוע</button></div>
+        <div class="actions"><button type="button" class="primary" data-view-orders>כניסת מנהל</button></div>
       </section>
 
       <!-- קוד סודי לצפייה -->
       <form class="step" data-step="code" novalidate hidden>
-        <h2 tabindex="-1">צפייה בהזמנות</h2>
-        <p class="hint" id="codeHint">הצפייה מוגנת בקוד.</p>
+        <h2 tabindex="-1">כניסת מנהל</h2>
+        <p class="hint" id="codeHint">צפייה בהזמנות והפעלת מצב בדיקה. מוגן בקוד.</p>
         <div class="field">
-          <label for="viewCode">קוד צפייה</label>
+          <label for="viewCode">קוד מנהל</label>
           <input type="text" id="viewCode" inputmode="numeric" autocomplete="off" aria-describedby="codeHint err-code">
         </div>
         <p class="error" id="err-code" role="alert"></p>
         <div class="actions"><button type="button" class="secondary" id="codeBackBtn">חזרה</button><button type="submit" class="primary" id="codeBtn">כניסה</button></div>
       </form>
 
-      <!-- רשימת ההזמנות -->
+      <!-- מסך מנהל: מצב בדיקה + רשימת ההזמנות -->
       <section class="step" data-step="orders" hidden>
-        <h2 tabindex="-1" id="ordersTitle">ההזמנות לשישי</h2>
+        <h2 tabindex="-1">ניהול</h2>
+        <div class="admin-box">
+          <label class="switch">
+            <input type="checkbox" role="switch" id="testToggle" aria-describedby="testHint">
+            <span>מצב בדיקה</span>
+          </label>
+          <p class="hint" id="testHint"></p>
+          <p class="error" role="alert"></p>
+          <button type="button" class="secondary" id="reloadBtn" hidden>רענון הדף</button>
+        </div>
+        <h3 class="orders-group" id="ordersTitle">ההזמנות לשישי</h3>
         <div id="ordersBody"></div>
         <div class="actions"><button type="button" class="secondary" id="ordersBackBtn">חזרה</button></div>
       </section>
     </main>
 
-    <div class="footer-link" id="footerLink" hidden><button type="button" class="linklike" data-view-orders>צפייה בהזמנות (עם קוד)</button></div>
+    <div class="footer-link" id="footerLink" hidden><button type="button" class="linklike" data-view-orders>כניסת מנהל</button></div>
   </div>
 
   <!-- חלון: כבר יש הזמנה השבוע -->
@@ -357,6 +378,7 @@
     let found = { current: null, last: null };
     let current = 'loading';
     let returnTo = 'name';
+    let adminCode = '';
 
     const $ = s => document.querySelector(s);
     const stepEl = id => document.querySelector('[data-step="' + id + '"]');
@@ -698,10 +720,38 @@
       return s + ' · ' + o.veggies;
     }
 
+    function renderTestMode(on) {
+      $('#testToggle').checked = on;
+      $('#testHint').textContent = on
+        ? 'פעיל: הטופס פתוח לכולם בכל שעה, וההזמנות נשמרות בלשונית "בדיקה" (לא נכנסות ל-PDF).'
+        : 'כבוי: הטופס פתוח רק ביום רביעי, בין ' + BOOT.openTime + ' ל-' + BOOT.deadline + '.';
+    }
+
+    async function toggleTestMode() {
+      const t = $('#testToggle');
+      const on = t.checked;
+      t.disabled = true;
+      setError('orders', '');
+      try {
+        const res = await server('setTestMode', { code: adminCode, on });
+        if (!res.ok) throw new Error(res.code);
+        renderTestMode(res.testMode);
+        // ההזמנות שמוצגות עוברות בין השבוע האמיתי ללשונית "בדיקה"
+        const data = await (await fetch(API_URL + '?action=orders&code=' + encodeURIComponent(adminCode))).json();
+        if (data.ok) renderOrders(data);
+        $('#reloadBtn').hidden = false;
+      } catch (e) {
+        t.checked = !on;
+        setError('orders', 'לא הצלחנו לשנות את מצב הבדיקה. כדאי לנסות שוב.');
+      }
+      t.disabled = false;
+    }
+
     function renderOrders(data) {
       const body = $('#ordersBody');
       body.innerHTML = '';
-      $('#ordersTitle').textContent = 'ההזמנות לשישי ' + data.fridayLabel;
+      renderTestMode(data.testMode);
+      $('#ordersTitle').textContent = data.testMode ? 'הזמנות בדיקה' : 'ההזמנות לשישי ' + data.fridayLabel;
       const orders = data.orders.slice().sort((a, b) => a.name.localeCompare(b.name, 'he'));
       const sandwiches = orders.filter(o => o.type === 'כריך');
       const drinks = orders.filter(o => o.type === 'שתייה');
@@ -786,6 +836,8 @@
           return;
         }
         $('#viewCode').removeAttribute('aria-invalid');
+        adminCode = code;
+        $('#reloadBtn').hidden = true;
         renderOrders(data);
         show('orders');
       } catch (e) {
@@ -799,6 +851,7 @@
       $('#forDay').textContent = 'לשישי ' + BOOT.fridayLabel;
       $('#deadlineNote').textContent = '⏰ יש להזמין עד רביעי ב-' + BOOT.deadline;
       $('#deadlineNote').hidden = false;
+      $('#testBanner').hidden = !BOOT.testMode;
 
       const asItems = arr => arr.map(v => ({ value: v, label: v }));
       buildOptions('drink', asItems(M.drinks));
@@ -835,6 +888,8 @@
       document.querySelectorAll('[data-view-orders]').forEach(b => b.addEventListener('click', openCode));
       $('#codeBackBtn').addEventListener('click', () => show(returnTo));
       $('#ordersBackBtn').addEventListener('click', () => show(returnTo));
+      $('#testToggle').addEventListener('change', toggleTestMode);
+      $('#reloadBtn').addEventListener('click', () => location.reload());
 
       if (BOOT.closed) return closed();
       if (!BOOT.employees.length) {
