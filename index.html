@@ -172,6 +172,21 @@
     .switch input:checked { background: var(--accent); }
     .switch input:checked::after { inset-inline-start: 27px; }
     .switch input:disabled { opacity: .6; cursor: wait; }
+    .admin-box summary { font-size: 1.15rem; font-weight: 700; cursor: pointer; min-height: 32px; }
+    .emp-add { margin-top: 14px; }
+    .emp-add label { display: block; font-weight: 500; margin-bottom: 6px; }
+    .emp-row { display: flex; gap: 8px; }
+    .emp-row input { flex: 1; min-width: 0; }
+    .emp-row button { flex: none; min-height: 56px; }
+    .emp-status { margin: 8px 0 12px; font-weight: 500; }
+    .emp-status.bad { color: var(--error); }
+    .emp-status:empty { display: none; }
+    .emp-list { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; }
+    .emp-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+    .emp-list li:last-child { border-bottom: 0; }
+    .emp-list button { font-size: .95rem; min-height: 44px; padding: 8px 14px; }
+    .danger { background: var(--error); color: #fff; }
+    .danger:hover { background: var(--error); filter: brightness(.9); }
     .footer-link { text-align: center; margin-top: 18px; }
     .linklike { background: none; border: 0; color: var(--muted); text-decoration: underline; font-weight: 400; font-size: .95rem; min-height: 44px; padding: 8px; }
   </style>
@@ -348,6 +363,22 @@
           <p class="error" role="alert"></p>
           <button type="button" class="secondary" id="reloadBtn" hidden>רענון הדף</button>
         </div>
+        <details class="admin-box" id="empBox">
+          <summary id="empSummary">רשימת העובדים</summary>
+          <form id="empAddForm" class="emp-add" novalidate>
+            <label for="empName">הוספת עובד – שם מלא</label>
+            <div class="emp-row">
+              <input type="text" id="empName" autocomplete="off">
+              <button type="submit" class="primary" id="empAddBtn">הוספה</button>
+            </div>
+          </form>
+          <p class="emp-status" id="empStatus" role="status" aria-live="polite"></p>
+          <div class="field search">
+            <label for="empSearch">חיפוש ברשימה</label>
+            <input type="text" id="empSearch" autocomplete="off">
+          </div>
+          <ul class="emp-list" id="empList"></ul>
+        </details>
         <h3 class="orders-group" id="ordersTitle">ההזמנות לשישי</h3>
         <div id="ordersBody"></div>
         <div class="actions"><button type="button" class="secondary" id="ordersBackBtn">חזרה</button></div>
@@ -365,6 +396,16 @@
     <div class="actions">
       <button type="button" class="secondary" id="keepBtn">לא</button>
       <button type="button" class="primary" id="changeBtn">כן, לשנות</button>
+    </div>
+  </dialog>
+
+  <!-- חלון: אישור מחיקת עובד -->
+  <dialog id="removeDialog" aria-labelledby="removeTitle">
+    <h2 id="removeTitle">למחוק מהרשימה?</h2>
+    <p id="removeText"></p>
+    <div class="actions">
+      <button type="button" class="secondary" id="removeCancel">ביטול</button>
+      <button type="button" class="primary danger" id="removeConfirm">מחיקה</button>
     </div>
   </dialog>
 
@@ -747,6 +788,81 @@
       t.disabled = false;
     }
 
+    // ===== ניהול רשימת העובדים =====
+    let removing = '';
+
+    function empStatus(msg, bad) {
+      const el = $('#empStatus');
+      el.textContent = msg;
+      el.classList.toggle('bad', !!bad);
+    }
+
+    function renderEmployees() {
+      const list = $('#empList');
+      const q = norm($('#empSearch').value);
+      list.innerHTML = '';
+      $('#empSummary').textContent = 'רשימת העובדים (' + BOOT.employees.length + ')';
+      BOOT.employees.filter(n => !q || norm(n).includes(q)).forEach(n => {
+        const li = el('li');
+        const btn = el('button', 'secondary', 'מחיקה');
+        btn.type = 'button';
+        btn.setAttribute('aria-label', 'מחיקת ' + n);
+        btn.addEventListener('click', () => {
+          removing = n;
+          $('#removeText').textContent = 'למחוק את ' + n + ' מהרשימה? ההזמנות הקודמות נשמרות בגיליון.';
+          $('#removeDialog').showModal();
+        });
+        li.append(el('span', '', n), btn);
+        list.append(li);
+      });
+      if (!list.children.length) list.append(el('li', 'hint', BOOT.employees.length ? 'לא נמצא שם כזה' : 'הרשימה ריקה'));
+    }
+
+    async function changeEmployee(action, name) {
+      const res = await server(action, { code: adminCode, name });
+      if (res.ok) {
+        BOOT.employees = res.employees; // ההשלמה האוטומטית בשלב השם משתמשת מיד ברשימה החדשה
+        renderEmployees();
+      }
+      return res;
+    }
+
+    async function addEmployee() {
+      const input = $('#empName');
+      const name = input.value.replace(/\s+/g, ' ').trim();
+      if (name.length < 2) { empStatus('יש להקליד שם מלא', true); input.focus(); return; }
+      const btn = $('#empAddBtn');
+      btn.disabled = true;
+      try {
+        const res = await changeEmployee('addEmployee', name);
+        if (res.ok) { empStatus('✅ ' + name + ' נוסף לרשימה'); input.value = ''; }
+        else empStatus(res.code === 'DUPLICATE' ? name + ' כבר ברשימה' : 'השם לא תקין', true);
+      } catch (e) {
+        empStatus('משהו השתבש בחיבור. כדאי לנסות שוב.', true);
+      }
+      btn.disabled = false;
+      input.focus();
+    }
+
+    async function confirmRemove() {
+      const name = removing;
+      const btn = $('#removeConfirm');
+      btn.disabled = true;
+      try {
+        const res = await changeEmployee('removeEmployee', name);
+        empStatus(res.ok ? '🗑️ ' + name + ' נמחק מהרשימה' : name + ' כבר לא ברשימה', !res.ok);
+        if (!res.ok && res.code === 'NOT_FOUND') {
+          BOOT.employees = BOOT.employees.filter(n => n !== name);
+          renderEmployees();
+        }
+      } catch (e) {
+        empStatus('משהו השתבש בחיבור. כדאי לנסות שוב.', true);
+      }
+      btn.disabled = false;
+      $('#removeDialog').close();
+      $('#empName').focus();
+    }
+
     function renderOrders(data) {
       const body = $('#ordersBody');
       body.innerHTML = '';
@@ -838,6 +954,8 @@
         $('#viewCode').removeAttribute('aria-invalid');
         adminCode = code;
         $('#reloadBtn').hidden = true;
+        empStatus('');
+        renderEmployees();
         renderOrders(data);
         show('orders');
       } catch (e) {
@@ -889,12 +1007,17 @@
       $('#codeBackBtn').addEventListener('click', () => show(returnTo));
       $('#ordersBackBtn').addEventListener('click', () => show(returnTo));
       $('#testToggle').addEventListener('change', toggleTestMode);
+      $('#empAddForm').addEventListener('submit', e => { e.preventDefault(); addEmployee(); });
+      $('#empSearch').addEventListener('input', renderEmployees);
+      $('#removeConfirm').addEventListener('click', confirmRemove);
+      $('#removeCancel').addEventListener('click', () => $('#removeDialog').close());
       $('#reloadBtn').addEventListener('click', () => location.reload());
 
       if (BOOT.closed) return closed();
       if (!BOOT.employees.length) {
         $('#loadingTitle').textContent = 'רשימת העובדים עדיין ריקה';
-        $('#loadingText').textContent = 'צריך להוסיף את שמות העובדים ללשונית "עובדים" בגיליון.';
+        $('#loadingText').textContent = 'אפשר להוסיף עובדים בכניסת מנהל, ואז לרענן את הדף.';
+        $('#footerLink').hidden = false;
         return;
       }
       show('name');
@@ -910,5 +1033,4 @@
       });
   </script>
 </body>
-
 </html>
