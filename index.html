@@ -363,6 +363,15 @@
           <p class="error" role="alert"></p>
           <button type="button" class="secondary" id="reloadBtn" hidden>רענון הדף</button>
         </div>
+        <details class="admin-box" id="pendingBox" open>
+          <summary id="pendingSummary">עוד לא הזמינו</summary>
+          <p class="hint" id="pendingUpdated" aria-live="polite"></p>
+          <ul class="emp-list" id="pendingList"></ul>
+          <div class="actions">
+            <button type="button" class="secondary" id="pendingRefresh">רענון</button>
+            <button type="button" class="secondary" id="pendingCopy">העתקת הרשימה</button>
+          </div>
+        </details>
         <details class="admin-box" id="empBox">
           <summary id="empSummary">רשימת העובדים</summary>
           <form id="empAddForm" class="emp-add" novalidate>
@@ -823,6 +832,7 @@
       if (res.ok) {
         BOOT.employees = res.employees; // ההשלמה האוטומטית בשלב השם משתמשת מיד ברשימה החדשה
         renderEmployees();
+        renderPending();
       }
       return res;
     }
@@ -863,7 +873,46 @@
       $('#empName').focus();
     }
 
+    // ===== מי עוד לא הזמין =====
+    let lastOrders = null;
+    let pendingNames = [];
+
+    function renderPending() {
+      if (!lastOrders) return;
+      const ordered = new Set(lastOrders.orders.map(o => norm(o.name)));
+      pendingNames = BOOT.employees.filter(n => !ordered.has(norm(n)));
+      const total = BOOT.employees.length;
+      $('#pendingSummary').textContent = pendingNames.length
+        ? 'עוד לא הזמינו (' + pendingNames.length + ' מתוך ' + total + ')'
+        : 'כולם הזמינו 🎉 (' + total + ' מתוך ' + total + ')';
+      const list = $('#pendingList');
+      list.innerHTML = '';
+      pendingNames.forEach(n => list.append(el('li', '', n)));
+      $('#pendingCopy').hidden = !pendingNames.length;
+      const now = new Date();
+      $('#pendingUpdated').textContent = 'עודכן ב-' + String(now.getHours()).padStart(2, '0') + ':' +
+        String(now.getMinutes()).padStart(2, '0') + ' · מתעדכן לבד כל 30 שניות';
+    }
+
+    // טוען מחדש את ההזמנות בלי לאבד את מה שהוקלד בחיפוש
+    async function refreshOrders() {
+      const res = await fetch(API_URL + '?action=orders&code=' + encodeURIComponent(adminCode));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.code);
+      const q = $('#ordersSearch') ? $('#ordersSearch').value : '';
+      renderOrders(data);
+      const search = $('#ordersSearch');
+      if (search && q) { search.value = q; search.dispatchEvent(new Event('input')); }
+    }
+
+    setInterval(() => {
+      if (current === 'orders' && adminCode && document.visibilityState === 'visible') refreshOrders().catch(() => {});
+    }, 30000);
+
     function renderOrders(data) {
+      lastOrders = data;
+      renderPending();
       const body = $('#ordersBody');
       body.innerHTML = '';
       renderTestMode(data.testMode);
@@ -1011,6 +1060,21 @@
       $('#empSearch').addEventListener('input', renderEmployees);
       $('#removeConfirm').addEventListener('click', confirmRemove);
       $('#removeCancel').addEventListener('click', () => $('#removeDialog').close());
+      $('#pendingRefresh').addEventListener('click', async () => {
+        const btn = $('#pendingRefresh');
+        btn.disabled = true; btn.textContent = 'מרענן…';
+        try { await refreshOrders(); } catch (e) { $('#pendingUpdated').textContent = 'הרענון נכשל, כדאי לנסות שוב.'; }
+        btn.disabled = false; btn.textContent = 'רענון';
+      });
+      $('#pendingCopy').addEventListener('click', async () => {
+        const text = 'עוד לא הזמינו כריך לשישי ' + lastOrders.fridayLabel + ':\n' + pendingNames.join('\n');
+        try {
+          await navigator.clipboard.writeText(text);
+          $('#pendingUpdated').textContent = '📋 הרשימה הועתקה, אפשר להדביק בוואטסאפ';
+        } catch (e) {
+          $('#pendingUpdated').textContent = 'לא הצלחנו להעתיק אוטומטית.';
+        }
+      });
       $('#reloadBtn').addEventListener('click', () => location.reload());
 
       if (BOOT.closed) return closed();
