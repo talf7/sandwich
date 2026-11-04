@@ -187,6 +187,11 @@
     .emp-list button { font-size: .95rem; min-height: 44px; padding: 8px 14px; }
     .danger { background: var(--error); color: #fff; }
     .danger:hover { background: var(--error); filter: brightness(.9); }
+    .box-title { font-size: 1.15rem; margin: 0 0 4px; }
+    #pdfBox .hint { margin: 0 0 10px; }
+    #pdfSendBtn { width: 100%; margin: 0 0 16px; }
+    .pdf-auto { margin-top: 4px; }
+    #sendDialog .opt { margin: 4px 0 0; font-size: 1rem; }
     .footer-link { text-align: center; margin-top: 18px; }
     .linklike { background: none; border: 0; color: var(--muted); text-decoration: underline; font-weight: 400; font-size: .95rem; min-height: 44px; padding: 8px; }
   </style>
@@ -372,6 +377,17 @@
             <button type="button" class="secondary" id="pendingCopy">העתקת הרשימה</button>
           </div>
         </details>
+        <div class="admin-box" id="pdfBox">
+          <h3 class="box-title">שליחת ה-PDF</h3>
+          <p class="hint" id="pdfLast"></p>
+          <button type="button" class="primary" id="pdfSendBtn">שליחת ה-PDF עכשיו</button>
+          <label class="switch pdf-auto">
+            <input type="checkbox" role="switch" id="autoPdfToggle" aria-describedby="autoPdfHint">
+            <span id="autoPdfLabel">שליחה אוטומטית השבוע</span>
+          </label>
+          <p class="hint" id="autoPdfHint"></p>
+          <p class="emp-status" id="pdfStatus" role="status" aria-live="polite"></p>
+        </div>
         <details class="admin-box" id="empBox">
           <summary id="empSummary">רשימת העובדים</summary>
           <form id="empAddForm" class="emp-add" novalidate>
@@ -405,6 +421,18 @@
     <div class="actions">
       <button type="button" class="secondary" id="keepBtn">לא</button>
       <button type="button" class="primary" id="changeBtn">כן, לשנות</button>
+    </div>
+  </dialog>
+
+  <!-- חלון: אישור שליחת PDF ידנית -->
+  <dialog id="sendDialog" aria-labelledby="sendTitle">
+    <h2 id="sendTitle">לשלוח את ה-PDF עכשיו?</h2>
+    <p id="sendText"></p>
+    <label class="opt checked" id="skipAutoLabel"><input type="checkbox" id="skipAutoCheck" checked>
+      <span id="skipAutoText">לא לשלוח שוב אוטומטית השבוע</span></label>
+    <div class="actions">
+      <button type="button" class="secondary" id="sendCancel">ביטול</button>
+      <button type="button" class="primary" id="sendConfirm">שליחה</button>
     </div>
   </dialog>
 
@@ -910,8 +938,69 @@
       if (current === 'orders' && adminCode && document.visibilityState === 'visible') refreshOrders().catch(() => {});
     }, 30000);
 
+    // ===== שליחת ה-PDF מהמסך =====
+    let autoPdfTime = '';
+
+    function renderPdf(pdf) {
+      if (!pdf) return;
+      $('#pdfLast').textContent = pdf.lastSent ? 'נשלח לאחרונה: ' + pdf.lastSent : 'עוד לא נשלח השבוע.';
+      $('#autoPdfLabel').textContent = 'שליחה אוטומטית ב-' + autoPdfTime;
+      $('#autoPdfToggle').checked = !pdf.autoSkipped;
+      $('#autoPdfHint').textContent = pdf.autoSkipped
+        ? 'כבוי: השבוע ה-PDF לא יישלח אוטומטית ב-' + autoPdfTime + '. אפשר לשלוח ידנית מתי שרוצים.'
+        : 'פעיל: ה-PDF יישלח אוטומטית ב-' + autoPdfTime + ' עם כל ההזמנות שיהיו אז.';
+      $('#skipAutoText').textContent = 'לא לשלוח שוב אוטומטית ב-' + autoPdfTime + ' השבוע';
+    }
+
+    function pdfStatus(msg, bad) {
+      const el = $('#pdfStatus');
+      el.textContent = msg;
+      el.classList.toggle('bad', !!bad);
+    }
+
+    function openSend() {
+      const n = lastOrders ? lastOrders.orders.length : 0;
+      $('#sendText').textContent = 'יישלח PDF עם ' + n + ' ההזמנות שיש כרגע, למספר שהוגדר. ההזמנות לא נמחקות, ואפשר לשלוח שוב אחר כך.';
+      $('#skipAutoCheck').checked = true;
+      $('#skipAutoLabel').classList.add('checked');
+      $('#sendDialog').showModal();
+    }
+
+    async function confirmSend() {
+      const btn = $('#sendConfirm');
+      btn.disabled = true; btn.textContent = 'שולח…';
+      try {
+        const res = await server('sendPdf', { code: adminCode, skipAuto: $('#skipAutoCheck').checked });
+        if (res.ok) { renderPdf(res.pdf); pdfStatus('✅ ה-PDF נשלח'); }
+        else pdfStatus('השליחה נכשלה: ' + (res.message || res.code), true);
+      } catch (e) {
+        pdfStatus('משהו השתבש בחיבור. כדאי לבדוק ב"נשלח לאחרונה" לפני שליחה חוזרת.', true);
+      }
+      btn.disabled = false; btn.textContent = 'שליחה';
+      $('#sendDialog').close();
+      $('#pdfSendBtn').focus();
+    }
+
+    async function toggleAutoPdf() {
+      const t = $('#autoPdfToggle');
+      const on = t.checked;
+      t.disabled = true;
+      try {
+        const res = await server('setAutoPdf', { code: adminCode, on });
+        if (!res.ok) throw new Error(res.code);
+        renderPdf(res.pdf);
+        pdfStatus('');
+      } catch (e) {
+        t.checked = !on;
+        pdfStatus('לא הצלחנו לשנות. כדאי לנסות שוב.', true);
+      }
+      t.disabled = false;
+    }
+
     function renderOrders(data) {
       lastOrders = data;
+      autoPdfTime = data.autoPdfTime || autoPdfTime;
+      renderPdf(data.pdf);
       renderPending();
       const body = $('#ordersBody');
       body.innerHTML = '';
@@ -1004,6 +1093,7 @@
         adminCode = code;
         $('#reloadBtn').hidden = true;
         empStatus('');
+        pdfStatus('');
         renderEmployees();
         renderOrders(data);
         show('orders');
@@ -1060,6 +1150,11 @@
       $('#empSearch').addEventListener('input', renderEmployees);
       $('#removeConfirm').addEventListener('click', confirmRemove);
       $('#removeCancel').addEventListener('click', () => $('#removeDialog').close());
+      $('#pdfSendBtn').addEventListener('click', openSend);
+      $('#sendConfirm').addEventListener('click', confirmSend);
+      $('#sendCancel').addEventListener('click', () => $('#sendDialog').close());
+      $('#skipAutoCheck').addEventListener('change', e => $('#skipAutoLabel').classList.toggle('checked', e.target.checked));
+      $('#autoPdfToggle').addEventListener('change', toggleAutoPdf);
       $('#pendingRefresh').addEventListener('click', async () => {
         const btn = $('#pendingRefresh');
         btn.disabled = true; btn.textContent = 'מרענן…';
