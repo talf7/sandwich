@@ -75,11 +75,13 @@
 
     .field { margin-bottom: 16px; }
     .field label { display: block; font-weight: 500; margin-bottom: 6px; }
-    input[type=text] {
+    input[type=text], input[type=time] {
       width: 100%; font: inherit; font-size: 1.1rem; padding: 14px;
       border: 2px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
     }
     input[type=text][aria-invalid=true] { border-color: var(--error); }
+    #timeBox .hint { margin: 10px 0 0; }
+    #timeResetBtn { margin-top: 10px; min-height: 48px; }
 
     .options { display: grid; gap: 10px; }
     .options.two { grid-template-columns: 1fr 1fr; }
@@ -367,6 +369,19 @@
           <p class="hint" id="testHint"></p>
           <p class="error" role="alert"></p>
           <button type="button" class="secondary" id="reloadBtn" hidden>רענון הדף</button>
+        </div>
+        <div class="admin-box" id="timeBox">
+          <h3 class="box-title">שעת סגירה השבוע</h3>
+          <form id="timeForm" class="emp-add" novalidate>
+            <label for="deadlineInput">אפשר להזמין עד</label>
+            <div class="emp-row">
+              <input type="time" id="deadlineInput" step="300" aria-describedby="timeHint">
+              <button type="submit" class="primary" id="timeSaveBtn">שמירה</button>
+            </div>
+          </form>
+          <p class="hint" id="timeHint"></p>
+          <button type="button" class="secondary" id="timeResetBtn" hidden></button>
+          <p class="emp-status" id="timeStatus" role="status" aria-live="polite"></p>
         </div>
         <details class="admin-box" id="pendingBox" open>
           <summary id="pendingSummary">עוד לא הזמינו</summary>
@@ -997,8 +1012,49 @@
       t.disabled = false;
     }
 
+    // ===== שעת סגירה לשבוע הנוכחי =====
+    function renderTimes(t) {
+      if (!t) return;
+      $('#deadlineInput').value = t.deadline;
+      $('#timeHint').textContent = 'הטופס נסגר בפועל ב-' + t.closeTime + ', ואז נשלח ה-PDF. ' +
+        (t.custom ? 'השינוי לשבוע הזה בלבד – בשבוע הבא חוזרים ל-' + t.defaultDeadline + '.' : 'זו שעת ברירת המחדל.') +
+        (t.closed ? ' שים לב: השעה כבר עברה והטופס סגור.' : '');
+      $('#timeResetBtn').hidden = !t.custom;
+      $('#timeResetBtn').textContent = 'חזרה ל-' + t.defaultDeadline;
+      BOOT.deadline = t.deadline;
+      if (!$('#deadlineNote').hidden) $('#deadlineNote').textContent = '⏰ יש להזמין עד רביעי ב-' + t.deadline;
+    }
+
+    function timeStatus(msg, bad) {
+      const el = $('#timeStatus');
+      el.textContent = msg;
+      el.classList.toggle('bad', !!bad);
+    }
+
+    async function saveDeadline(time) {
+      const btn = $('#timeSaveBtn');
+      btn.disabled = true;
+      try {
+        const res = await server('setDeadline', { code: adminCode, time });
+        if (!res.ok) {
+          timeStatus('השעה לא תקינה. צריך שעה אחרי ' + (BOOT.openTime || '07:00') + ' ועד 23:00.', true);
+        } else {
+          autoPdfTime = res.autoPdfTime || autoPdfTime;
+          renderTimes(res.times);
+          if (lastOrders) renderPdf(lastOrders.pdf);
+          renderTestMode($('#testToggle').checked);
+          timeStatus('✅ נשמר: אפשר להזמין השבוע עד ' + res.times.deadline);
+          $('#reloadBtn').hidden = false;
+        }
+      } catch (e) {
+        timeStatus('משהו השתבש בחיבור. כדאי לנסות שוב.', true);
+      }
+      btn.disabled = false;
+    }
+
     function renderOrders(data) {
       lastOrders = data;
+      renderTimes(data.times);
       autoPdfTime = data.autoPdfTime || autoPdfTime;
       renderPdf(data.pdf);
       renderPending();
@@ -1094,6 +1150,7 @@
         $('#reloadBtn').hidden = true;
         empStatus('');
         pdfStatus('');
+        timeStatus('');
         renderEmployees();
         renderOrders(data);
         show('orders');
@@ -1150,6 +1207,13 @@
       $('#empSearch').addEventListener('input', renderEmployees);
       $('#removeConfirm').addEventListener('click', confirmRemove);
       $('#removeCancel').addEventListener('click', () => $('#removeDialog').close());
+      $('#timeForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const v = $('#deadlineInput').value;
+        if (!v) { timeStatus('יש לבחור שעה', true); return; }
+        saveDeadline(v);
+      });
+      $('#timeResetBtn').addEventListener('click', () => saveDeadline(null));
       $('#pdfSendBtn').addEventListener('click', openSend);
       $('#sendConfirm').addEventListener('click', confirmSend);
       $('#sendCancel').addEventListener('click', () => $('#sendDialog').close());
